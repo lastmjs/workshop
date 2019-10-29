@@ -16,17 +16,17 @@ pub struct Chat {
 impl Chat {
     pub fn leave_message(&mut self, receiver_id: String, message: String) {
         let sender_id = env::signer_account_id();
-        // Add message to records.
+        unimplemented!()
     }
 
     pub fn get_unread_messages(&self) -> Vec<(String, String)>{
         let receiver_id = env::signer_account_id();
-        // Retrieve messages for the given receiver_id.
+        unimplemented!()
     }
 
     pub fn mark_all_as_read(&mut self) {
         let receiver_id = env::signer_account_id();
-        // Mark all messages as read.
+        unimplemented!()
     }
 }
 

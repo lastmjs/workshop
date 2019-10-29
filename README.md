@@ -128,7 +128,7 @@ near send <account id> friend_of_<account id> 10
 
 Success! You have completed the first exercise!
 
-## Exercise 1: Chat
+## Exercise 1: Chat (Your first smart contract)
 
 Let's write a smart contract that multiple users will use to leave messages for each other. This contract has the following
 requirements:
@@ -136,7 +136,7 @@ requirements:
 * We want Bob to be able to call `get_unread_messages` and get a list of messages left for him from everyone;
 * We want Bob to be able to call `mark_all_as_read` and mark all unread messages as read.
 
-See [exercises/chat](https://github.com/nearprotocol/workshop/tree/master/exercises/chat) for a project template.
+See [exercises/chat](https://github.com/nearprotocol/workshop/tree/master/exercises/chat) for the project template.
 
 First we create a structure representing the state of our smart contract:
 ```rust
@@ -174,7 +174,7 @@ and can only be called using a transaction. If it uses `&self` then it can also 
 * Internally each method is able to retrieve the account id of whoever called it, using `env::signer_account_id()`. See the full list of `env::*` methods [here](https://github.com/nearprotocol/near-bindgen/blob/master/near-bindgen/src/environment/env.rs).
 
 Now go ahead and implement the rest of the code! You can check your solution by running `cargo test` from the `chat` folder.
-You can also find solutions in [exercises/chat-solution](https://github.com/nearprotocol/workshop/tree/master/exercises/chat-solution)
+You can also find the solution in [exercises/chat-solution](https://github.com/nearprotocol/workshop/tree/master/exercises/chat-solution)
 
 You can build your smart contract with
 ```bash
@@ -208,3 +208,114 @@ Finally, let's use Bob's account to lookup unread messages:
 ```bash
 near call chat_<account id> get_unread_messages '' --accountId=bob_<account id>
 ```
+You should observe:
+```json
+[ [ 'alice_hellomax', 'Hey!' ], [ 'carol_hellomax', 'Hi!' ] ]
+```
+
+Congratulations, you wrote your first smart contract!
+
+## Exercise 2: Inbox (Your first cross-contract call)
+
+The previous smart contract might leave some users uncomfortable. After all, in the blockchain world we want to own our
+own data :) Let's have a decentralized version of the previous smart contract, called "Inbox" where we have one smart
+contract per user and when Alice want to leave a message for Bob she calls a method on Bob's account. Specifically:
+* We want Alice to be able to call the `send` method on her own account to send Bob a message. `send` in turn should
+call `leave_message` on Bob's account;
+* We also want Alice to be able to call `get_all_unread_messages` and `mark_all_as_read` on any account similarly the
+previous smart contract.
+
+See [exercises/inbox](https://github.com/nearprotocol/workshop/tree/master/exercises/inbox) for the project template.
+
+First, just in the previous exercise we want to create a structure for the state of the smart contract:
+```rust
+#[near_bindgen]
+#[derive(Default, BorshDeserialize, BorshSerialize)]
+pub struct Inbox {
+    // sender_id -> left messages.
+    unread_messages: HashMap<String, Vec<String>>,
+}
+```
+Unlike, in the previous exercise,`unread_messages` only stores the messages addressed to the current account.
+
+Then we want to write the smart contract methods:
+```rust
+#[near_bindgen]
+impl Inbox {
+    pub fn send(&self, receiver_id: String, message: String) {
+        unimplemented!()
+    }
+
+    pub fn get_all_unread_messages(&self) -> HashMap<String, Vec<String>> {
+        unimplemented!()
+    }
+
+    pub fn mark_all_as_read(&mut self) {
+        unimplemented!()
+    }
+}
+```
+
+`send` method however, is going to call a method on another contract in an asynchronous way. To benefit from Rust's
+strong typing we can declare a trait representing the external methods that we want to call:
+```rust
+#[ext_contract]
+pub trait ExtInbox {
+    fn leave_message(&mut self, message: String);
+}
+```
+
+Let's walk over the code here:
+* `#[ext_contract]` decorator marks the trait as an interface of an external contract;
+* `ExtInbox` is some trait declaring methods of the smart contract that we want to call. In our special case we calling
+the same smart contract that lives on a different account.
+
+Since we are calling the same contract that lives on a different account we can make it even more explicit, by implementing this
+trait:
+```rust
+#[near_bindgen]
+impl ExtInbox for Inbox {
+    fn leave_message(&mut self, message: String) {
+        unimplemented!()
+    }
+}
+```
+
+Since, it is the first time for you implementing a cross-contract, we will implement `send` method for you:
+```rust
+pub fn send(&self, receiver_id: String, message: String) {
+    let prepaid_gas = env::prepaid_gas();
+    ext_inbox::leave_message(message, &receiver_id, 0, prepaid_gas/2);
+}
+```
+Now, go ahead and implement the rest of the methods! Unfortunately, we have not implemented unit testing of cross-contract
+calls yet, but you can run `cargo test` from the `inbox` folder to test regular methods. We will fully test our code by
+deploying it to a local node.
+You can also find the solution in [exercises/inbox-solution](https://github.com/nearprotocol/workshop/tree/master/exercises/inbox-solution)
+
+Build your smart contract with
+```bash
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Deploying and running the contract
+Let's reuse Alice's and Bob's accounts. Go to `myproject` and redeploy a new smart contract on them:
+```bash
+near deploy --accountId=alice_hellomax --wasmFile=../Projects/workshop/exercises/inbox-solution/target/wasm32-unknown-unknown/release/inbox_solution.wasm
+near deploy --accountId=bob_hellomax --wasmFile=../Projects/workshop/exercises/inbox-solution/target/wasm32-unknown-unknown/release/inbox_solution.wasm
+```
+Now Alice will use her own smart contract to leave a message for Bob:
+```bash
+near call alice_hellomax send '{"receiver_id": "bob_hellomax", "message": "Hi!"}' --accountId=alice_hellomax
+```
+
+Finally, let's use Bob's account to retrieve unread messages:
+```bash
+near call bob_hellomax get_all_unread_messages '' --accountId=bob_hellomax
+```
+You should observe:
+```json
+{ alice_hellomax: [ 'Hi!' ] }
+```
+
+Congratulations, you wrote your first smart contract that asynchronously calls another smart contract.
