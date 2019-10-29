@@ -104,7 +104,7 @@ Then copy the key that the node generated upon starting in your local project to
 cp ~/.near/signer0_key.json ./neardev/default/<account id>.json
 ```
 
-## Issuing a transaction
+### Issuing a transaction
 First, let's check whether your account exists:
 ```bash
 near state <account id>
