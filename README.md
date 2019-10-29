@@ -209,7 +209,7 @@ Finally, let's use Bob's account to lookup unread messages:
 near call chat_<account id> get_unread_messages '' --accountId=bob_<account id>
 ```
 You should observe:
-```json
+```
 [ [ 'alice_hellomax', 'Hey!' ], [ 'carol_hellomax', 'Hi!' ] ]
 ```
 
@@ -299,8 +299,22 @@ cargo build --target wasm32-unknown-unknown --release
 ```
 
 ### Deploying and running the contract
-Let's reuse Alice's and Bob's accounts. Go to `myproject` and redeploy a new smart contract on them:
+Let's wipe out and re-create Alice's and Bob's accounts so that we have clean state for both of them.
+Go to `myproject`, wipe them out:
 ```bash
+near delete_account alice_hellomax hellomax
+near delete_account bob_hellomax hellomax
+```
+Here we used `hellomax` as the reciever of the remaining funds on Alice's and Bob's accounts.
+
+Recreate accounts:
+```bash
+near create_account alice_hellomax --masterAccount hellomax --initialBalance 10000000000000000
+near create_account bob_hellomax --masterAccount hellomax --initialBalance 10000000000000000
+```
+and redeploy a new smart contract on them:
+```bash
+
 near deploy --accountId=alice_hellomax --wasmFile=../Projects/workshop/exercises/inbox-solution/target/wasm32-unknown-unknown/release/inbox_solution.wasm
 near deploy --accountId=bob_hellomax --wasmFile=../Projects/workshop/exercises/inbox-solution/target/wasm32-unknown-unknown/release/inbox_solution.wasm
 ```
@@ -314,8 +328,100 @@ Finally, let's use Bob's account to retrieve unread messages:
 near call bob_hellomax get_all_unread_messages '' --accountId=bob_hellomax
 ```
 You should observe:
-```json
+```
 { alice_hellomax: [ 'Hi!' ] }
 ```
 
 Congratulations, you wrote your first smart contract that asynchronously calls another smart contract.
+
+## Exercise 3: Messenger (Your first callback)
+<img src="images/seen.jpeg" width="100">
+In the previous example when Alice sends a message she has no way of knowing what messages Bob has already read.
+Can we modify the `Inbox::send` method that not only it sends the message to Bob but also retrieves Alice's messages that Bob has not read yet?
+
+We will do three modifications to our inbox contract. First we all add `get_unread_messages` method for retrieve
+unread messages send by a specific sender:
+
+```rust
+#[ext_contract]
+pub trait ExtMessenger {
+    fn leave_message(&mut self, message: String);
+    fn get_unread_messages(&self, sender_id: String) -> Vec<String>;
+}
+```
+
+Then we will specify that  `get_unread_messages` should be executed right after `leave_message`:
+```rust
+pub fn send(&self, receiver_id: String, message: String) {
+        let prepaid_gas = env::prepaid_gas();
+        let this_account = env::current_account_id();
+        ext_messenger::leave_message(message, &receiver_id, 0, prepaid_gas/3)
+            .then(ext_messenger::get_unread_messages(this_account, &receiver_id, 0, prepaid_gas/3));
+    }
+```
+
+However, we have not told Rust yet that we want `send` to return the result of executing `get_unread_messages` on another
+contract. We can do it by simply returning the promise:
+```rust
+pub fn send(&self, receiver_id: String, message: String) -> Promise {
+        let prepaid_gas = env::prepaid_gas();
+        let this_account = env::current_account_id();
+        ext_messenger::leave_message(message, &receiver_id, 0, prepaid_gas/3)
+            .then(ext_messenger::get_unread_messages(this_account, &receiver_id, 0, prepaid_gas/3))
+    }
+```
+
+Now go ahead and finish implementation of other methods containing `unimplemented!()`.
+You can also find the solution in [exercises/messenger-solution](https://github.com/nearprotocol/workshop/tree/master/exercises/messenger-solution).
+
+Build your smart contract with
+```bash
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Deploying and running the contract
+Again, we wipe out Alice's and Bob's accounts and redeploy new accounts on them.
+Go to `myproject` and run:
+```bash
+near delete_account alice_hellomax hellomax
+near delete_account bob_hellomax hellomax
+near create_account alice_hellomax --masterAccount hellomax --initialBalance 10000000000000000
+near create_account bob_hellomax --masterAccount hellomax --initialBalance 10000000000000000
+near deploy --accountId=alice_hellomax --wasmFile=../Projects/workshop/exercises/messenger-solution/target/wasm32-unknown-unknown/release/messenger_solution.wasm
+near deploy --accountId=bob_hellomax --wasmFile=../Projects/workshop/exercises/messenger-solution/target/wasm32-unknown-unknown/release/messenger_solution.wasm
+```
+
+Now Alice will use her own smart contract to leave a message for Bob:
+```bash
+near call alice_hellomax send '{"receiver_id": "bob_hellomax", "message": "Hi!"}' --accountId=alice_hellomax
+```
+Observe:
+```
+[ 'Hi!' ]
+```
+
+Bob, obviously has not seen our message yet, because we just sent it a moment ago. However, technically Bob could've
+concurrently issued method call to `mark_all_as_read` which would have resulted in us observing `[]` instead.
+
+Let's leave another message for Bob:
+```bash
+near call alice_hellomax send '{"receiver_id": "bob_hellomax", "message": "Wanna hang?"}' --accountId=alice_hellomax
+```
+And just like in real life observe that both `Hi!` and `Wanna Hang?` were not even read yet:
+```
+[ 'Hi!', 'Wanna hang?' ]
+```
+
+Now let's use Bob's account to mark these messages as read (without replying naturally):
+```bash
+near call bob_hellomax mark_all_as_read '' --accountId=bob_hellomax
+```
+
+And let's leave another message from Alice's account:
+```bash
+near call alice_hellomax send '{"receiver_id": "bob_hellomax", "message": "AFK?"}' --accountId=alice_hellomax
+```
+Observe that now only `AFK?` message is marked as unread:
+```
+[ 'AFK?' ]
+```
