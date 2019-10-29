@@ -73,7 +73,7 @@ Then copy the key that the node generated upon starting in your local project to
 cp ~/.near/validator_key.json ./neardev/default/<account id>.json
 ```
 
-## If you chose to not install docker
+### If you chose to not install docker
 Go to `nearcore` and run:
 ```bash
 cargo run --package keypair-generator --bin keypair-generator -- --account-id=<account id> --generate-config signer-keys --num-keys=1
