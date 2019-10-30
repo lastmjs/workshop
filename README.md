@@ -407,12 +407,12 @@ Let's leave another message for Bob:
 ```bash
 near call alice_hellomax send '{"receiver_id": "bob_hellomax", "message": "Wanna hang?"}' --accountId=alice_hellomax
 ```
-And just like in real life observe that both `Hi!` and `Wanna Hang?` were not even read yet:
+And just like in real life, observe that both `Hi!` and `Wanna Hang?` were not even read yet:
 ```
 [ 'Hi!', 'Wanna hang?' ]
 ```
 
-Now let's use Bob's account to mark these messages as read (without replying naturally):
+Now let's use Bob's account to mark these messages as read (without replying, naturally):
 ```bash
 near call bob_hellomax mark_all_as_read '' --accountId=bob_hellomax
 ```
@@ -426,7 +426,7 @@ Observe that now only `AFK?` message is marked as unread:
 [ 'AFK?' ]
 ```
 
-## Challenge 0: Rating aggregator using MapReduce
+## Challenge: Rating aggregator using MapReduce
 
 In MapReduce there are typically two sets of workers: Map (sometimes Map+Shuffle) and Reduce that process some large
 amount of data in distributed manner.
@@ -435,7 +435,7 @@ The output data is usually indexed by some key and each key is associated with a
 reduce worker can be associated with multiple keys. Each Reduce worker then performs an aggregation step on the received
 data.
 
-In we will do the following:
+We will do the following:
 * Write a `hotel` that has initialization function `init` that creates fake user data;
 * Write a `hotel_factory` contract that deploys several `hotel` contracts and initializes them.
 
@@ -445,3 +445,125 @@ The challenge is to write `agency` contract that has `user_ratings` method that 
 <p align="center">
 <img src="images/MapReduce.png" width="100%">
 </p>
+
+### Hotel contract
+
+We wrote a hotel contract for you, you can find it in [exercises/mapreduce/hotel](https://github.com/nearprotocol/workshop/tree/master/exercises/mapreduce/hotel).
+
+Let's walk through the code. We have defined three structures: `Hotel`, `Reservation`, and `User`.
+Each of them derives `BorshSerialize` and `BorshDeserialize` so that they can be saved in the state. `Reservation`
+and `User` also derive `serde::{Serialize, Deserialize}` so that we can return them in JSON format.
+
+```rust
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+pub struct User {
+    is_business: bool,
+    id: String,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+pub struct Reservation {
+    user: User,
+    amount: u64,
+    date: String,
+    room_number: u64
+}
+
+#[near_bindgen]
+#[derive(Default, BorshDeserialize, BorshSerialize)]
+pub struct Hotel {
+    past_reservations: Vec<Reservation>,
+}
+```
+
+In addition to a simple `get_reservation` function we have implemented a new type of function `new_random`. `new_random`
+can be used to (re)set the state of the smart contract; in other words, initialize it. We declare that this function
+can be used for initialization with `#[near_bindgen(init => new_random)]` decorator.
+
+### Hotel factory contract
+
+We wrote a contract that deploys a bunch of hotels for you, you can find it in [exercises/mapreduce/hotel-factory](https://github.com/nearprotocol/workshop/tree/master/exercises/mapreduce/hotel-factory).
+
+Let's walk through the code. `HotelFactory` does not have its own state, therefore the structure has no fields:
+```rust
+#[near_bindgen]
+#[derive(Default, BorshDeserialize, BorshSerialize)]
+pub struct HotelFactory {}
+```
+
+`HotelFactory` has only one method: `deploy_hotels` which takes two arguments: the number of hotel contracts to deploy
+and how many fake stays should we generate per hotel contract. For each hotel contract this function does the following:
+* `Promise::new(account_id.clone()).create_account()` -- creates an account with that name;
+* `transfer(tokens_per_hotel)` -- transfers some amount of tokens to it;
+* `add_full_access_key(env::signer_account_pk())` -- adds an "access key" so that we can sign transaction for this account using the same public key we've been using;
+* `deploy_contract(include_bytes!("../../hotel/target/wasm32-unknown-unknown/release/hotel.wasm").to_vec())` -- deploys the `hotel` smart contract to that account;
+* When all of the above stuff is finished (it is going to be executed together) it performs a function call to `new_random`
+to initialize the contract.
+
+Overall the code looks like this:
+```rust
+#[near_bindgen]
+impl HotelFactory {
+    /// Asynchronously deploy several hotels.
+    pub fn deploy_hotels(&self, num_hotels: u8, stays_per_hotel: u64) {
+        let tokens_per_hotel = env::account_balance()/(num_hotels as u128 + 1); // Leave some for this account.
+        let gas_per_hotel = env::prepaid_gas()/(num_hotels as u64 + 1); // Leave some for this execution.
+        for i in 0..num_hotels {
+            let account_id = format!("hotel{}", i);
+            Promise::new(account_id.clone())
+                .create_account()
+                .transfer(tokens_per_hotel)
+                .add_full_access_key(env::signer_account_pk())
+                .deploy_contract(
+                    include_bytes!("../../hotel/target/wasm32-unknown-unknown/release/hotel.wasm").to_vec(),
+                ).then(ext_hotel::new_random(i, stays_per_hotel, &account_id, 0, gas_per_hotel));
+        }
+    }
+}
+```
+
+### Building and running the contacts
+Let's build the hotel factory and deploy several hotel contracts.
+Go to `myproject` and run:
+```bash
+near create_account factory_hellomax --masterAccount hellomax --initialBalance 10000000000000000
+```
+
+Then deploy the factory smart contract to it:
+```bash
+near deploy --accountId=factory_hellomax --wasmFile=../Projects/workshop/exercises/mapreduce/hotel-factory/target/wasm32-unknown-unknown/release/hotel_fac
+tory.wasm
+```
+
+Now, let's deploy three hotels with 10 reservations in each:
+```bash
+near call factory_hellomax deploy_hotels '{"num_hotels": 3, "stays_per_hotel": 10}' --accountId=factory_hellomax
+```
+Finally, let's verify that the hotels were deployed and contain fake user data:
+```bash
+near call hotel0 get_reservations '' --accountId=factory_hellomax
+```
+You should observe:
+```
+[
+ {
+    user: { is_business: false, id: 'User61' },
+    amount: 87,
+    date: '2019-10-25',
+    room_number: 122
+  },
+  {
+    user: { is_business: true, id: 'User38' },
+    amount: 50,
+    date: '2019-10-24',
+    room_number: 189
+  }
+  ....
+]
+```
+(Truncated)
+
+### Implementing the agency contract
+
+Now go ahead and implement the agency contract! Please ask Max for any questions, also refer to the documentation
+at the beginning of this document.

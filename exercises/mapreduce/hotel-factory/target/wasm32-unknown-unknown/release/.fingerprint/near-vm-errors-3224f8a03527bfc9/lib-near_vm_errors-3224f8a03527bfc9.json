@@ -1,0 +1,1 @@
+{"rustc":178020575537535873,"features":"[]","target":1834957446768347642,"profile":365032725299564154,"path":14509620430830845898,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"wasm32-unknown-unknown/release/.fingerprint/near-vm-errors-3224f8a03527bfc9/dep-lib-near_vm_errors-3224f8a03527bfc9"}}],"rustflags":["-C","link-arg=-s"],"metadata":17369055325367697171}
