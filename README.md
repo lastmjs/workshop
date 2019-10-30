@@ -425,3 +425,23 @@ Observe that now only `AFK?` message is marked as unread:
 ```
 [ 'AFK?' ]
 ```
+
+## Challenge 0: Rating aggregator using MapReduce
+
+In MapReduce there are typically two sets of workers: Map (sometimes Map+Shuffle) and Reduce that process some large
+amount of data in distributed manner.
+Each Map worker reads some local data and *maps* it to some output data.
+The output data is usually indexed by some key and each key is associated with a single Reduce worker. Though a single
+reduce worker can be associated with multiple keys. Each Reduce worker then performs an aggregation step on the received
+data.
+
+In we will do the following:
+* Write a `hotel` that has initialization function `init` that creates fake user data;
+* Write a `hotel_factory` contract that deploys several `hotel` contracts and initializes them.
+
+The challenge is to write `agency` contract that has `user_ratings` method that kicks off map-shuffle-reduce by asking
+`hotel` contracts to aggregate their user data and send the relevant key to the agency contract.
+
+<p align="center">
+<img src="images/MapReduce.png" width="240">
+</p>
