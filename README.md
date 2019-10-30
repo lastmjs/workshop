@@ -443,5 +443,5 @@ The challenge is to write `agency` contract that has `user_ratings` method that 
 `hotel` contracts to aggregate their user data and send the relevant key to the agency contract.
 
 <p align="center">
-<img src="images/MapReduce.png" width="240">
+<img src="images/MapReduce.png" width="100%">
 </p>
